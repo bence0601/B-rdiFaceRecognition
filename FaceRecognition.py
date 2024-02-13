@@ -1,53 +1,68 @@
-
-import threading
-
 import cv2
 from deepface import DeepFace
-import tensorflow as tf
-print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
+from flask import Flask, render_template, Response
+import numpy as np
 
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+app = Flask(__name__)
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+cap = cv2.VideoCapture(0)
 
-counter = 0
+reference_images = {
+    'Apa': cv2.imread("Apa.jpg"),
+    'Bence': cv2.imread("Bence.jpg"),
+    'Anya': cv2.imread("Anya.jpg"),
+    'Jasi': cv2.imread("Jasi.jpg")
+}
 
-face_match = False
+# Downsampling factor for frames
+DOWNSAMPLE_FACTOR = 2
 
-reference_img = cv2.imread("reference.jpg")
 
 def check_face(frame):
-    global face_match
-    try:
-        if DeepFace.verify(frame, reference_img.copy())['verified']:
-            face_match = True
+    for name, reference_img in reference_images.items():
+        try:
+            if DeepFace.verify(frame, reference_img.copy())['verified']:
+                return name
+        except ValueError:
+            pass
+    return None
+
+
+def gen_frames():
+    frame_num = 0
+    while True:
+        success, frame = cap.read()
+        if not success:
+            break
+
+        frame_num += 1
+        if frame_num % DOWNSAMPLE_FACTOR != 0:
+            continue
+
+        # Downsample the frame
+        frame = cv2.resize(frame, (0, 0), fx=1 / DOWNSAMPLE_FACTOR, fy=1 / DOWNSAMPLE_FACTOR)
+
+        name = check_face(frame.copy())
+        if name:
+            cv2.putText(frame, f"MATCH: {name}", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
         else:
-            face_match = False
-    except ValueError:
-        pass
+            cv2.putText(frame, "NO MATCH", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+        ret, buffer = cv2.imencode('.jpg', frame)
+        frame = buffer.tobytes()
+        yield (b'--frame\r\n'
+               b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-while True:
-    ret, frame = cap.read()
 
-    if ret:
-        if counter % 30 == 0:
-            try:
-                threading.Thread(target=check_face, args=(frame.copy(),)).start()
-            except ValueError:
-                pass
-        counter += 1
+@app.route('/video_feed')
+def video_feed():
+    return Response(gen_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-        if face_match:
-            cv2.putText(frame, "MATCH", (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 3)
-        else:
-            cv2.putText(frame, "NO MATCH", (20, 450), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 255), 3)
 
-        cv2.imshow("video", frame)
-    key = cv2.waitKey(1)
-    if key == ord('q'):
-        break
-
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    app.run(debug=True)
