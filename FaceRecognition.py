@@ -8,10 +8,7 @@ app = Flask(__name__)
 cap = cv2.VideoCapture(0)
 
 reference_images = {
-    'Apa': cv2.imread("Apa.jpg"),
-    'Bence': cv2.imread("Bence.jpg"),
-    'Anya': cv2.imread("Anya.jpg"),
-    'Jasi': cv2.imread("Jasi.jpg")
+    'Placeholder': cv2.imread("Placeholder.jpg"),## For this job interview for Bárdi, im using a placeholder for the pictures
 }
 
 # Downsampling factor for frames
